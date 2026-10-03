@@ -47,9 +47,8 @@
             </main>
 
             <footer class="border-t border-line/70 px-4 py-4 sm:px-6 lg:px-8">
-                <div class="mx-auto flex w-full max-w-[1400px] flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                    <p>&copy; {{ now()->year }} Tech Components — Inventory Catalog.</p>
-                    <p>Catalog source: <span class="text-slate-400">the subtopis and samples.docx</span> · 25 products · 5 subtopics</p>
+                <div class="mx-auto w-full max-w-[1400px] text-xs text-slate-500">
+                    <p>&copy; {{ now()->year }} Tech Components &mdash; Inventory Catalog.</p>
                 </div>
             </footer>
         </div>

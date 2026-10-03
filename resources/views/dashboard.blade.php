@@ -187,11 +187,7 @@
     <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         @foreach ($categories as $category)
             <a href="{{ route('categories.'.$category->slug()) }}" class="group relative overflow-hidden rounded-2xl border border-line bg-panel p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/30 hover:bg-panel-raised">
-                <span class="grid h-10 w-10 place-items-center rounded-xl text-[12px] font-bold transition-colors duration-200"
-                      style="background: {{ \App\Catalog\ChartPalette::color($category->slug()) }}1f; color: {{ \App\Catalog\ChartPalette::color($category->slug()) }}; box-shadow: inset 0 0 0 1px {{ \App\Catalog\ChartPalette::color($category->slug()) }}33;">
-                    {{ $category->monogram() }}
-                </span>
-                <p class="mt-3 truncate text-[12.5px] font-semibold text-slate-100 transition group-hover:text-accent">{{ $category->label() }}</p>
+                <p class="truncate text-[12.5px] font-semibold text-slate-100 transition group-hover:text-accent">{{ $category->label() }}</p>
                 <p class="mt-0.5 text-[11px] text-slate-500">{{ $counts[$category->value] }} products &middot; subtopic {{ $loop->iteration }}</p>
             </a>
         @endforeach

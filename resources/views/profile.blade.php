@@ -18,7 +18,7 @@
                 </span>
                 <div class="min-w-0">
                     <h2 class="text-[19px] font-bold tracking-tight text-white">Shoby Keneth R. Daamo</h2>
-                    <p class="mt-0.5 text-[13px] text-slate-400">BSIT &ndash; 3A</p>
+                    <p class="mt-0.5 text-[13px] text-slate-400">CEO OWNER</p>
                     <div class="mt-2.5 flex flex-wrap gap-2">
                         <x-ui.badge label="Catalog owner" tone="accent" dot />
                         <x-ui.badge label="Tech Components" tone="slate" />
@@ -37,7 +37,7 @@
                 </div>
                 <div class="rounded-xl border border-line bg-shell/50 p-4">
                     <dt class="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data source</dt>
-                    <dd class="mt-1.5 text-[15px] font-bold text-accent">DOCX</dd>
+                    <dd class="mt-1.5 text-[15px] font-bold text-accent">THE VIBE CODER</dd>
                 </div>
             </dl>
         </div>
@@ -46,7 +46,7 @@
             <h2 class="text-[14px] font-semibold text-slate-100">Project</h2>
             <p class="mt-2 text-[12.5px] leading-relaxed text-slate-400">
                 TECH COMPONENTS is a dark themed Laravel dashboard and inventory catalog built around the subtopics and sample
-                products defined in <span class="text-slate-300">the subtopis and samples.docx</span>.
+                products defined in
             </p>
             <ul class="mt-4 space-y-2 text-[12.5px] text-slate-400">
                 <li class="flex gap-2"><span class="text-accent">&bull;</span><span>Laravel &middot; Blade &middot; Alpine.js</span></li>

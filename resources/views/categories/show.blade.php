@@ -1,7 +1,3 @@
-@php
-    $subtopicNumber = array_search($category, \App\Catalog\Category::ordered(), true) + 1;
-@endphp
-
 <x-layouts.app :active="'category-'.$category->slug()" :page-title="$pageTitle">
     <x-app.page-header
         :title="$category->label()"
@@ -19,9 +15,8 @@
     </x-app.page-header>
 
     {{-- Summary cards --}}
-    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <x-ui.stat-card label="Products" :value="$summary['products']" hint="in this subtopic" icon="layers" active />
-        <x-ui.stat-card label="Product Category" :value="'Subtopic '.$subtopicNumber" hint="of 5" icon="tag" />
         <x-ui.stat-card label="Starting Price" :value="'₱'.number_format($summary['entry'])" hint="lowest listed" icon="layers" />
         <x-ui.stat-card label="Maximum Price" :value="'₱'.number_format($summary['exit'])" hint="highest listed" icon="layers" />
     </div>

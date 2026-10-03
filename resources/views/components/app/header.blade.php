@@ -55,7 +55,7 @@
                 </span>
                 <span class="hidden text-left leading-tight md:block">
                     <span class="block text-[13px] font-semibold text-slate-200">Shoby Keneth R. Daamo</span>
-                    <span class="block text-[11px] text-slate-500">BSIT &ndash; 3A</span>
+                    <span class="block text-[11px] text-slate-500">CEO VIBE CODER</span>
                 </span>
             </a>
         </div>
