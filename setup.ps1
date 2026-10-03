@@ -3,7 +3,8 @@
     Sets up the TECH COMPONENTS dashboard on a Windows machine.
 
 .DESCRIPTION
-    Installs the toolchain (PHP 8.3+, Composer, Node.js LTS), restores the
+    Installs the toolchain (PHP 8.3+, Composer, Node.js LTS) and a database
+    server (XAMPP, which brings MySQL/MariaDB and phpMyAdmin), restores the
     Composer and npm dependencies, creates the MySQL database, runs the
     migrations and catalog seeder, builds the front-end assets and links the
     storage directory. Safe to re-run: every step detects what is already in
@@ -410,7 +411,77 @@ function Initialize-Node {
     Write-Ok "Node $(Read-NodeVersion) installed."
 }
 
-# ---------------------------------------------------------------- mysql --
+# --------------------------------------------------------------- database --
+
+function Get-XamppRoot {
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:SystemDrive, 'C:\', 'D:\', 'E:\')) {
+        # Join-Path throws on a drive letter that does not exist, so every root
+        # has to be checked before it is used.
+        if (-not $root -or -not (Test-Path $root)) { continue }
+
+        $candidate = Join-Path $root 'xampp'
+
+        if (Test-Path (Join-Path $candidate 'mysql\bin\mysql.exe')) { return $candidate }
+    }
+
+    return $null
+}
+
+function Test-XamppInstalled {
+    return $null -ne (Get-XamppRoot)
+}
+
+function Get-DatabaseService {
+    if (-not (Get-Command 'Get-Service' -ErrorAction SilentlyContinue)) { return $null }
+
+    # XAMPP registers its bundled MariaDB under "MariaDB" and older builds under
+    # "MySQL", so both have to be checked.
+    foreach ($pattern in @('MySQL*', 'MariaDB*')) {
+        $service = Get-Service -Name $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+
+        if ($service) { return $service }
+    }
+
+    return $null
+}
+
+function Start-DatabaseServer {
+    $service = Get-DatabaseService
+
+    if ($service -and $service.Status -ne 'Running') {
+        Write-Detail "Starting the '$($service.Name)' service..."
+
+        try {
+            Start-Service -Name $service.Name -ErrorAction Stop
+        } catch {
+            Write-Detail "The service did not start: $($_.Exception.Message)"
+        }
+    }
+
+    if (Test-MySqlPort) { return }
+
+    # A fresh XAMPP install has no database service registered until it has been
+    # started from the Control Panel at least once, so launch mysqld the same
+    # way that Control Panel does.
+    $xampp = Get-XamppRoot
+
+    if ($xampp) {
+        $mysqld = Join-Path $xampp 'mysql\bin\mysqld.exe'
+        $config = Join-Path $xampp 'mysql\bin\my.ini'
+
+        if ((Test-Path $mysqld) -and (Test-Path $config)) {
+            Write-Detail 'Launching mysqld directly...'
+            Start-Process -FilePath $mysqld -ArgumentList "--defaults-file=`"$config`"" -WindowStyle Hidden
+        }
+    }
+
+    # mysqld needs a moment to open the port.
+    for ($attempt = 1; $attempt -le 12; $attempt++) {
+        if (Test-MySqlPort) { return }
+
+        Start-Sleep -Seconds 2
+    }
+}
 
 function Find-MySqlClient {
     if ($env:DbClientPath -and (Test-Path $env:DbClientPath)) {
@@ -429,8 +500,13 @@ function Find-MySqlClient {
         if ($base) { $roots += $base }
     }
 
+    $roots += @($env:SystemDrive, 'C:\', 'D:\', 'E:\')
+
     # Official MySQL Server installs, then XAMPP's bundled client.
     foreach ($root in $roots) {
+        # Join-Path throws on a drive letter that does not exist.
+        if (-not $root -or -not (Test-Path $root)) { continue }
+
         foreach ($folder in @('MySQL', 'xampp\mysql\bin', 'php', 'laragon\bin\mysql')) {
             $directory = Join-Path $root $folder
 
@@ -460,28 +536,119 @@ function Test-MySqlPort {
     }
 }
 
-function Initialize-MySqlServer {
+function Initialize-DatabaseServer {
     if (Test-MySqlPort) {
-        Write-Ok "MySQL is accepting connections on ${DbHost}:$DbPort."
+        Write-Ok "A database is accepting connections on ${DbHost}:$DbPort."
         return
+    }
+
+    # Setup can start a local server but has no business trying to start one on
+    # another machine.
+    if (@('127.0.0.1', 'localhost', '::1') -notcontains $DbHost) {
+        throw "Nothing is answering on ${DbHost}:$DbPort. Only a local server can be started for you, so start that one yourself and re-run."
     }
 
     Write-Warn "Nothing is listening on ${DbHost}:$DbPort."
 
-    $service = Get-Service -Name 'MySQL*' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (Test-XamppInstalled) {
+        Write-Ok "XAMPP found at $(Get-XamppRoot)."
+    } else {
+        Write-Detail 'No local database server found.'
 
-    if ($service -and $service.Status -ne 'Running') {
-        Write-Detail "Starting the '$($service.Name)' service..."
-        Start-Service -Name $service.Name -ErrorAction Stop
-        Start-Sleep -Seconds 3
+        if ($SkipToolchainInstall) {
+            throw 'A MySQL/MariaDB server is required. Install XAMPP from https://www.apachefriends.org/ and re-run.'
+        }
+
+        Assert-Elevated
+
+        if (-not (Test-HasWinget)) {
+            throw 'winget is unavailable, so XAMPP cannot be installed for you. Install it from https://www.apachefriends.org/ and re-run.'
+        }
+
+        Write-Detail 'Installing XAMPP via winget. This bundles MySQL/MariaDB and phpMyAdmin and takes a few minutes...'
+        Invoke-WingetInstall -Id 'ApacheFriends.Xampp.8.2'
+
+        if (-not (Test-XamppInstalled)) {
+            throw 'XAMPP was installed but its mysql client was not found under C:\xampp. Open the XAMPP Control Panel once, then re-run.'
+        }
+
+        Write-Ok 'XAMPP installed.'
     }
 
-    if (Test-MySqlPort) {
-        Write-Ok 'MySQL service started.'
-        return
+    Write-Detail 'Starting the database server...'
+    Start-DatabaseServer
+
+    if (-not (Test-MySqlPort)) {
+        throw "Cannot reach a database on ${DbHost}:$DbPort. Open the XAMPP Control Panel, press Start next to MySQL, then re-run this script."
     }
 
-    throw "Cannot reach MySQL on ${DbHost}:$DbPort. Start it from the XAMPP Control Panel (open MySQL, then Start) and re-run this script."
+    Write-Ok "The database server is up on ${DbHost}:$DbPort."
+}
+
+function Repair-PhpPathShadowing {
+    <#
+        XAMPP puts its own PHP on PATH, and that build is usually older than the
+        8.3 this project needs. Once a standalone PHP has been installed the
+        XAMPP one has to be pushed behind it for this session.
+    #>
+    $command = Get-Command 'php' -ErrorAction SilentlyContinue
+
+    if (-not $command) { return }
+
+    if ($command.Source -notmatch '\\(xampp|laragon|wamp)\\' ) { return }
+
+    # An XAMPP build new enough to use is not a problem.
+    if (Test-PhpVersion) { return }
+
+    Write-Warn "PHP on PATH is $($command.Source), which is too old for this project."
+
+    $directories = @()
+
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, 'C:\tools', 'C:\php')) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+
+        $found = Get-ChildItem -Path $root -Filter 'php.exe' -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\(xampp|laragon|wamp)\\' } |
+            Select-Object -ExpandProperty FullName
+
+        $directories += $found
+    }
+
+    foreach ($candidate in $directories) {
+        $version = & $candidate -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>$null
+
+        if (-not $version) { continue }
+
+        if (([Version] "$version") -ge [Version] '8.3') {
+            $env:Path = "$(Split-Path -Parent $candidate);$env:Path"
+            Write-Ok "Using $candidate (PHP $version) instead of the XAMPP build."
+            return
+        }
+    }
+
+    throw 'A standalone PHP 8.3+ was installed but something older is still first on PATH, so this script cannot continue. Open a new terminal and run it again.'
+}
+
+function Invoke-MySqlCreateDatabase {
+    <#
+        Runs the CREATE DATABASE statement with the given password. Returns $true
+        on success. Output is captured because mysql.exe writes a harmless
+        "using a password on the command line" warning that would otherwise look
+        like part of the script's own progress.
+    #>
+    param([string] $Client, [AllowEmptyString()] [string] $Password)
+
+    $arguments = @(
+        "-h$DbHost", "-P$DbPort", "-u$DbUser",
+        '--default-character-set=utf8mb4',
+        '-e', "CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    )
+
+    if ($Password) { $arguments += "-p$Password" }
+
+    $output = & $Client @arguments 2>&1 | Out-String
+
+    return @{ Ok = ($LASTEXITCODE -eq 0); Output = $output }
 }
 
 function Initialize-MySqlDatabase {
@@ -497,18 +664,27 @@ function Initialize-MySqlDatabase {
 
     # The password is passed inline because mysql.exe has no prompt-free flag
     # that is safe to automate. Whatever is typed stays on this machine.
-    $arguments = @(
-        "-h$DbHost", "-P$DbPort", "-u$DbUser",
-        '--default-character-set=utf8mb4',
-        '-e', "CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-    )
+    $result = Invoke-MySqlCreateDatabase -Client $client -Password $DbPassword
 
-    if ($DbPassword) { $arguments += "-p$DbPassword" }
+    if (-not $result.Ok) {
+        # XAMPP's root account ships with a blank password, which is the most
+        # likely reason the first attempt was rejected.
+        $denied = $result.Output -match '1045|denied|denied access'
 
-    & $client @arguments
+        if ($denied -and $DbPassword) {
+            Write-Warn 'Access denied. XAMPP root accounts use a blank password, trying that...'
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not create the database '$DbName'. Check the MySQL username and password."
+            $result = Invoke-MySqlCreateDatabase -Client $client -Password ''
+
+            if ($result.Ok) {
+                Set-Variable -Name 'DbPassword' -Value '' -Scope Script
+                Write-Ok "Connected to $DbUser with a blank password."
+                Write-Ok "Database '$DbName' is ready."
+                return
+            }
+        }
+
+        throw "Could not create the database '$DbName'. Check the MySQL username and password. XAMPP's root account has a blank password by default."
     }
 
     Write-Ok "Database '$DbName' is ready."
@@ -621,7 +797,7 @@ function Request-DatabaseSetting {
 
     # Read-Host echoes what is typed unless told otherwise, and a database
     # password should not sit in the console scrollback.
-    $secure = Read-Host '    MySQL password [xampp]' -AsSecureString
+    $secure = Read-Host "    MySQL password [$DbPassword] (XAMPP's root account is blank by default)" -AsSecureString
     $plain = [Net.NetworkCredential]::new('', $secure).Password
 
     if ($plain) {
@@ -665,6 +841,7 @@ function Invoke-Main {
         # -- toolchain --
         Write-Step 'Preparing the toolchain'
         Initialize-Php
+        Repair-PhpPathShadowing
         Initialize-PhpExtensions
         Initialize-Composer
         Initialize-Node
@@ -673,16 +850,18 @@ function Invoke-Main {
         Write-Step 'Installing PHP dependencies'
         Invoke-External -FilePath 'composer' -ArgumentList @('install', '--no-interaction', '--no-progress') -What 'composer install'
 
+        # -- database --
+        # The server is started and the credentials proven before .env is
+        # written, so a rejected password never reaches the file.
+        Write-Step 'Preparing the MySQL database'
+        Request-DatabaseSetting
+        Initialize-DatabaseServer
+        Initialize-MySqlDatabase
+
         # -- environment --
         Write-Step 'Configuring the environment'
         Initialize-EnvFile
         Invoke-External -FilePath 'php' -ArgumentList @('artisan', 'key:generate', '--force') -What 'php artisan key:generate'
-
-        # -- database --
-        Write-Step 'Preparing the MySQL database'
-        Request-DatabaseSetting
-        Initialize-MySqlServer
-        Initialize-MySqlDatabase
         Invoke-External -FilePath 'php' -ArgumentList @('artisan', 'migrate', '--force') -What 'php artisan migrate'
         Invoke-External -FilePath 'php' -ArgumentList @('artisan', 'db:seed', '--force') -What 'php artisan db:seed (the 25 catalog products)'
 
@@ -706,6 +885,13 @@ function Invoke-Main {
         Write-Host ''
         Write-Host '    Restore the original 25 products with:  php artisan catalog:reset' -ForegroundColor DarkGray
         Write-Host ''
+
+        if (Test-XamppInstalled) {
+            Write-Host '    phpMyAdmin (from XAMPP):  http://localhost/phpmyadmin' -ForegroundColor DarkGray
+            Write-Host '    That needs Apache running, so press Start next to Apache in the' -ForegroundColor DarkGray
+            Write-Host '    XAMPP Control Panel the first time you want it.' -ForegroundColor DarkGray
+            Write-Host ''
+        }
 
         if ($SkipServe) { return }
 

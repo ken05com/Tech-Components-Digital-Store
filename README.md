@@ -30,15 +30,31 @@ PowerShell* — from a copy of this folder. It:
 1. installs anything missing from the toolchain (PHP 8.3+, Composer, Node.js
    LTS) using `winget`, enabling `pdo_mysql` and `zip` in `php.ini` as it goes;
 2. runs `composer install` and `npm install && npm run build`;
-3. copies `.env.example` to `.env` and asks for your MySQL host, database,
-   user and password, preselecting the XAMPP defaults;
-4. creates the database, then runs `migrate` and `db:seed` for the 25 products;
-5. links `storage` and clears the caches;
-6. offers to start `php artisan serve`.
+3. installs XAMPP if no database server answers on port 3306, then starts
+   MySQL/MariaDB — XAMPP is what provides **phpMyAdmin**;
+4. asks for your MySQL host, database, user and password, preselecting the
+   XAMPP defaults, and creates the database;
+5. writes `.env` and `APP_KEY`, then runs `migrate` and `db:seed` for the 25
+   products;
+6. links `storage` and clears the caches;
+7. offers to start `php artisan serve`.
 
-Installing tools needs Administrator rights, so if step 1 finds something
-missing you will be asked to relaunch as Administrator. Start XAMPP and press
-**Start** next to **MySQL** before running the script. It is safe to run more
+The database password is proven against the server before `.env` is written,
+so a rejected password never ends up in the file. XAMPP's `root` account has a
+blank password by default; if the entered password is refused, the script
+retries once with a blank one.
+
+phpMyAdmin then lives at <http://localhost/phpmyadmin>. It is served by XAMPP's
+Apache, so press **Start** next to **Apache** in the XAMPP Control Panel the
+first time you want it.
+
+Two XAMPP interactions are handled for you: its bundled PHP is usually older
+than the 8.3 this project needs, so a standalone PHP 8.3+ is put ahead of it on
+`PATH`, and its database is registered as a `MariaDB` service rather than
+`MySQL`, so both names are looked for.
+
+Installing anything needs Administrator rights, so if a step finds something
+missing you will be asked to relaunch as Administrator. It is safe to run more
 than once: finished steps are detected and skipped.
 
 | Flag                    | Effect                                             |
