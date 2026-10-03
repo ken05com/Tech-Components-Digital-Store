@@ -213,14 +213,14 @@ class ProductRepository
         );
 
         DB::table('products')->insert([
-            'id'          => $product->id,
+            'id' => $product->id,
             'category_id' => $product->categoryId,
-            'category'    => $product->category->value,
-            'name'        => $product->name,
+            'category' => $product->category->value,
+            'name' => $product->name,
             'description' => $product->description,
-            'price_min'   => $product->priceMin,
-            'price_max'   => $product->priceMax,
-            'image'       => $product->image,
+            'price_min' => $product->priceMin,
+            'price_max' => $product->priceMax,
+            'image' => $product->image,
         ]);
 
         return $product;
@@ -248,12 +248,12 @@ class ProductRepository
 
         DB::table('products')->where('id', $updated->id)->update([
             'category_id' => $updated->categoryId,
-            'category'    => $updated->category->value,
-            'name'        => $updated->name,
+            'category' => $updated->category->value,
+            'name' => $updated->name,
             'description' => $updated->description,
-            'price_min'   => $updated->priceMin,
-            'price_max'   => $updated->priceMax,
-            'image'       => $updated->image,
+            'price_min' => $updated->priceMin,
+            'price_max' => $updated->priceMax,
+            'image' => $updated->image,
         ]);
 
         return $updated;

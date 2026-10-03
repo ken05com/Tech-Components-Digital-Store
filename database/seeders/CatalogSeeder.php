@@ -15,12 +15,12 @@ class CatalogSeeder extends Seeder
                 ['id' => $product->id],
                 [
                     'category_id' => $product->categoryId,
-                    'category'    => $product->category->value,
-                    'name'        => $product->name,
+                    'category' => $product->category->value,
+                    'name' => $product->name,
                     'description' => $product->description,
-                    'price_min'   => $product->priceMin,
-                    'price_max'   => $product->priceMax,
-                    'image'       => $product->image,
+                    'price_min' => $product->priceMin,
+                    'price_max' => $product->priceMax,
+                    'image' => $product->image,
                 ],
             );
         }
