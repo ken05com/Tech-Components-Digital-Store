@@ -2,30 +2,26 @@
 
 namespace App\Catalog;
 
+use Database\Seeders\CatalogSeeder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
  * Read/write access to the catalog.
  *
- * The project runs without a database on purpose, so the 25 seed products from
- * CatalogData are the baseline and any Add / Edit / Delete performed from the
- * dashboard is persisted as a small JSON overlay in storage/app/catalog.
- * Deleting the overlay file restores the original document data.
+ * The MySQL "products" table is the single source of truth at runtime. The 25
+ * seed products from CatalogData are loaded into that table by CatalogSeeder,
+ * and reset() restores the table to exactly those rows.
  */
 class ProductRepository
 {
-    public const OVERLAY = 'catalog/products.json';
-
     public const PER_PAGE = 10;
 
-    /** In-request memo so a page never reads the overlay twice. */
-    private ?array $overlay = null;
-
     /**
-     * Seed catalog merged with the overlay, ordered by category then ID.
+     * All products, ordered by category then ID.
      *
      * @return Collection<int, Product>
      */
@@ -181,8 +177,10 @@ class ProductRepository
     /** @return Collection<int, Product> */
     public function recent(int $limit = 5): Collection
     {
+        // No created_at column: fall back to id order. create() assigns
+        // max(id) + 1, so the highest id is always the most recent row.
         return $this->all()
-            ->sortByDesc(fn (Product $p) => $p->createdAt ?? '')
+            ->sortByDesc(fn (Product $p) => $p->createdAt ?? sprintf('%06d', $p->id))
             ->take($limit)
             ->values();
     }
@@ -214,9 +212,16 @@ class ProductRepository
             updatedAt: $now,
         );
 
-        $overlay = $this->readOverlay();
-        $overlay['products'][] = $product->toArray();
-        $this->writeOverlay($overlay);
+        DB::table('products')->insert([
+            'id'          => $product->id,
+            'category_id' => $product->categoryId,
+            'category'    => $product->category->value,
+            'name'        => $product->name,
+            'description' => $product->description,
+            'price_min'   => $product->priceMin,
+            'price_max'   => $product->priceMax,
+            'image'       => $product->image,
+        ]);
 
         return $product;
     }
@@ -241,43 +246,34 @@ class ProductRepository
             updatedAt: now()->format('Y-m-d H:i:s'),
         );
 
-        $overlay = $this->readOverlay();
-        $products = $overlay['products'];
-
-        foreach ($products as $index => $row) {
-            if ((int) ($row['id'] ?? 0) === $product->id) {
-                $products[$index] = $updated->toArray();
-                break;
-            }
-        }
-
-        $overlay['products'] = array_values($products);
-        $this->writeOverlay($overlay);
+        DB::table('products')->where('id', $updated->id)->update([
+            'category_id' => $updated->categoryId,
+            'category'    => $updated->category->value,
+            'name'        => $updated->name,
+            'description' => $updated->description,
+            'price_min'   => $updated->priceMin,
+            'price_max'   => $updated->priceMax,
+            'image'       => $updated->image,
+        ]);
 
         return $updated;
     }
 
     public function delete(Product $product): void
     {
-        $overlay = $this->readOverlay();
-        $overlay['products'] = array_values(array_filter(
-            $overlay['products'],
-            fn (array $row) => (int) ($row['id'] ?? 0) !== $product->id
-        ));
-
-        $this->writeOverlay($overlay);
+        DB::table('products')->where('id', $product->id)->delete();
     }
 
-    /** Drops every local change and brings back the 25 rows from the document. */
+    /** Wipes the table and re-seeds the 25 rows from CatalogData. */
     public function reset(): void
     {
-        Storage::delete(self::OVERLAY);
-        $this->overlay = null;
+        DB::table('products')->delete();
+        Artisan::call('db:seed', ['--class' => CatalogSeeder::class, '--force' => true]);
     }
 
     public function hasLocalChanges(): bool
     {
-        return ($this->readOverlay()['products'] ?? []) !== [];
+        return DB::table('products')->count() !== count(CatalogData::products());
     }
 
     // ------------------------------------------------------------ internals --
@@ -285,43 +281,10 @@ class ProductRepository
     /** @return array<int, Product> */
     private function merge(): array
     {
-        $seed = [];
-
-        foreach (CatalogData::products() as $product) {
-            $seed[$product->id] = $product;
-        }
-
-        foreach ($this->readOverlay()['products'] ?? [] as $row) {
-            $product = Product::fromArray($row);
-            $seed[$product->id] = $product;
-        }
-
-        return array_values($seed);
-    }
-
-    /** @return array{products: array<int, array<string, mixed>>} */
-    private function readOverlay(): array
-    {
-        if ($this->overlay !== null) {
-            return $this->overlay;
-        }
-
-        if (! Storage::exists(self::OVERLAY)) {
-            return $this->overlay = ['products' => []];
-        }
-
-        $decoded = json_decode((string) Storage::get(self::OVERLAY), true);
-
-        return $this->overlay = [
-            'products' => is_array($decoded['products'] ?? null) ? $decoded['products'] : [],
-        ];
-    }
-
-    /** @param  array{products: array<int, array<string, mixed>>}  $overlay */
-    private function writeOverlay(array $overlay): void
-    {
-        Storage::put(self::OVERLAY, json_encode($overlay, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-        $this->overlay = $overlay;
+        return DB::table('products')
+            ->get()
+            ->map(fn ($row) => Product::fromArray((array) $row))
+            ->all();
     }
 
     private function currentPath(): string
