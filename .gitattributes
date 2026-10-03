@@ -1,5 +1,11 @@
 * text=auto eol=lf
 
+# Batch files must keep CRLF. The line above forces LF on everything, and
+# cmd.exe misparses the multi-line if (...) blocks in setup.cmd when they
+# arrive with bare LF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
 *.blade.php diff=html
 *.css diff=css
 *.html diff=html
