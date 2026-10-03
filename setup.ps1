@@ -3,12 +3,15 @@
     Sets up the TECH COMPONENTS dashboard on a Windows machine.
 
 .DESCRIPTION
-    Installs the toolchain (PHP 8.3+, Composer, Node.js LTS) and a database
-    server (XAMPP, which brings MySQL/MariaDB and phpMyAdmin), restores the
-    Composer and npm dependencies, creates the MySQL database, runs the
-    migrations and catalog seeder, builds the front-end assets and links the
-    storage directory. Safe to re-run: every step detects what is already in
-    place and skips it.
+    Installs the toolchain (PHP 8.3+, Composer, Node.js LTS), starts a database
+    server that is already installed (XAMPP, which also provides phpMyAdmin),
+    restores the Composer and npm dependencies, creates the MySQL database,
+    runs the migrations and catalog seeder, builds the front-end assets and
+    links the storage directory. Safe to re-run: every step detects what is
+    already in place and skips it.
+
+    Nothing that installs software is done for the database server. Install
+    XAMPP or MySQL Server first if the machine does not have one.
 
 .PARAMETER DbHost
     MySQL host. Defaults to 127.0.0.1 (XAMPP).
@@ -550,31 +553,14 @@ function Initialize-DatabaseServer {
 
     Write-Warn "Nothing is listening on ${DbHost}:$DbPort."
 
-    if (Test-XamppInstalled) {
-        Write-Ok "XAMPP found at $(Get-XamppRoot)."
-    } else {
-        Write-Detail 'No local database server found.'
-
-        if ($SkipToolchainInstall) {
-            throw 'A MySQL/MariaDB server is required. Install XAMPP from https://www.apachefriends.org/ and re-run.'
-        }
-
-        Assert-Elevated
-
-        if (-not (Test-HasWinget)) {
-            throw 'winget is unavailable, so XAMPP cannot be installed for you. Install it from https://www.apachefriends.org/ and re-run.'
-        }
-
-        Write-Detail 'Installing XAMPP via winget. This bundles MySQL/MariaDB and phpMyAdmin and takes a few minutes...'
-        Invoke-WingetInstall -Id 'ApacheFriends.Xampp.8.2'
-
-        if (-not (Test-XamppInstalled)) {
-            throw 'XAMPP was installed but its mysql client was not found under C:\xampp. Open the XAMPP Control Panel once, then re-run.'
-        }
-
-        Write-Ok 'XAMPP installed.'
+    # The database server is never installed for you. XAMPP is the easiest way
+    # to get one, but it is a large system-wide install and not every machine
+    # wants it, so this only starts a server that is already present.
+    if (-not (Test-XamppInstalled)) {
+        throw 'No local database server was found. Install XAMPP from https://www.apachefriends.org/ (it provides MySQL/MariaDB and phpMyAdmin), or install MySQL Server, then re-run this script.'
     }
 
+    Write-Ok "XAMPP found at $(Get-XamppRoot)."
     Write-Detail 'Starting the database server...'
     Start-DatabaseServer
 
