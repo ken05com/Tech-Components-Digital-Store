@@ -4,30 +4,63 @@ A dark-themed Laravel dashboard and inventory catalog for tech components, built
 around the 25 products and 5 subtopics defined in **`the subtopis and samples.docx`**
 (Shoby Keneth R. Daamo, BSIT – 3A).
 
-> **No database.** The catalog is static PHP data (`app/Catalog/CatalogData.php`).
-> Add / Edit / Delete are persisted as a small JSON overlay in
-> `storage/app/private/catalog/products.json`, and *Settings → Restore document data*
-> resets it back to the original 25 rows.
+> **MySQL, no Eloquent.** The 25 products are defined as static PHP data in
+> `app/Catalog/CatalogData.php` and seeded into a `products` table by
+> `CatalogSeeder`. Add / Edit / Delete write straight to that table through the
+> query builder, and `catalog:reset` truncates and re-seeds it back to the
+> original 25 rows.
 
 ## Stack
 
 | Layer      | Choice                                            |
 | ---------- | ------------------------------------------------- |
-| Framework  | Laravel 12                                        |
+| Framework  | Laravel 13                                        |
 | Views      | Blade with reusable components (`resources/views/components`) |
 | Styling    | Tailwind CSS v4 with a custom dark palette        |
 | JS         | Alpine.js + Chart.js 4                            |
-| Data       | Static catalog + JSON overlay (no SQL, no Eloquent) |
+| Data       | MySQL `products` table via the query builder (no Eloquent) |
 
 ## Getting started
+
+### Windows
+
+Double-click **`setup.cmd`** — or right-click `setup.ps1` and choose *Run with
+PowerShell* — from a copy of this folder. It:
+
+1. installs anything missing from the toolchain (PHP 8.3+, Composer, Node.js
+   LTS) using `winget`, enabling `pdo_mysql` and `zip` in `php.ini` as it goes;
+2. runs `composer install` and `npm install && npm run build`;
+3. copies `.env.example` to `.env` and asks for your MySQL host, database,
+   user and password, preselecting the XAMPP defaults;
+4. creates the database, then runs `migrate` and `db:seed` for the 25 products;
+5. links `storage` and clears the caches;
+6. offers to start `php artisan serve`.
+
+Installing tools needs Administrator rights, so if step 1 finds something
+missing you will be asked to relaunch as Administrator. Start XAMPP and press
+**Start** next to **MySQL** before running the script. It is safe to run more
+than once: finished steps are detected and skipped.
+
+| Flag                    | Effect                                             |
+| ----------------------- | -------------------------------------------------- |
+| `-SkipPrompts`          | take every default, for unattended runs            |
+| `-SkipToolchainInstall` | never install anything system-wide                |
+| `-SkipServe`            | do not offer to start the server                  |
+| `-DbUser` `-DbPassword` | supply database credentials instead of prompting   |
+
+`setup.cmd` passes any flags straight through, so `setup.cmd -SkipServe` works.
+
+### macOS / Linux
 
 ```bash
 composer install
 npm install
 cp .env.example .env
 php artisan key:generate
-php artisan storage:link     # serves uploaded product images
-npm run build               # or: npm run dev
+php artisan migrate --force
+php artisan db:seed --force        # loads the 25 products
+php artisan storage:link           # serves uploaded product images
+npm run build                     # or: npm run dev
 php artisan serve
 ```
 
@@ -92,6 +125,8 @@ document — including the en dash in ranges such as `₱5,000–10,000`.
 ## Project layout
 
 ```
+setup.cmd                 # double-click Windows installer
+setup.ps1                 # what setup.cmd runs
 app/
   Catalog/
     CatalogData.php        # the 25 products, verbatim from the DOCX
@@ -100,6 +135,9 @@ app/
     ProductRepository.php  # read/write, search, filter, sort, paginate
     ChartPalette.php       # shared chart colours
   Http/Controllers/        # Dashboard, Category, Product, Search, Page
+database/
+  migrations/              # the products table
+  seeders/                 # CatalogSeeder, loads the 25 rows
 resources/
   css/app.css              # Tailwind v4 theme (dark palette + orange accent)
   js/app.js                # Alpine shell + Chart.js dashboard charts
