@@ -25,6 +25,8 @@
         'arrow-right' => '<path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/>',
         'refresh' => '<path d="M20 11a8 8 0 1 0-.6 4" stroke-linecap="round"/><path d="M20 4v7h-7" stroke-linecap="round" stroke-linejoin="round"/>',
         'info' => '<circle cx="12" cy="12" r="9"/><path d="M12 11v5" stroke-linecap="round"/><circle cx="12" cy="7.8" r="1" fill="currentColor" stroke="none"/>',
+        'home' => '<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10.5V20h12v-9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 20v-6h4v6"/>',
+        'cart' => '<path d="M3 4h2l2.6 12.5a1.5 1.5 0 0 0 1.48 1.2h7.6a1.5 1.5 0 0 0 1.48-1.2L20 8H6"/><circle cx="10" cy="20.5" r="1.2"/><circle cx="16.5" cy="20.5" r="1.2"/>',
     ];
 
     $path = $paths[$name] ?? $paths['grid'];

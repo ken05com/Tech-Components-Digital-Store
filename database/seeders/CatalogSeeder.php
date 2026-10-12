@@ -10,7 +10,7 @@ class CatalogSeeder extends Seeder
 {
     public function run(): void
     {
-        foreach (CatalogData::products() as $product) {
+        foreach (CatalogData::products() as $index => $product) {
             DB::table('products')->updateOrInsert(
                 ['id' => $product->id],
                 [
@@ -21,6 +21,10 @@ class CatalogSeeder extends Seeder
                     'price_min' => $product->priceMin,
                     'price_max' => $product->priceMax,
                     'image' => $product->image,
+                    'variants' => $product->variants === [] ? null : json_encode($product->variants),
+                    // Deterministic opening stock: every sixth row starts low so
+                    // the low-stock views have something to show out of the box.
+                    'stock' => $index % 6 === 0 ? 3 : 12 + (($index * 7) % 30),
                 ],
             );
         }

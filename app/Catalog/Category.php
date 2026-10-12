@@ -94,6 +94,26 @@ enum Category: string
         return self::cases();
     }
 
+    /**
+     * The database-backed record for this default subtopic. Used by the seeder
+     * and when a product built straight from CatalogData (which still speaks in
+     * enum cases) is converted to the runtime value object.
+     */
+    public function toRecord(): CategoryRecord
+    {
+        $position = (int) array_search($this, self::cases(), true);
+
+        return new CategoryRecord(
+            id: $position + 1,
+            slug: $this->slug(),
+            value: $this->value,
+            short: $this->shortLabel(),
+            description: $this->description(),
+            monogram: $this->monogram(),
+            position: $position,
+        );
+    }
+
     /** @return array<int, string> */
     public static function labels(): array
     {

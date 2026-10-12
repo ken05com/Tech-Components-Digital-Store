@@ -60,6 +60,13 @@ window.appShell = () => ({
 
 window.productForm = (initialPreview) => ({
     preview: initialPreview || '',
+    showPreviewFlag: false,
+    previewName: '',
+    previewDescription: '',
+    previewCategory: '',
+    previewPrice: '',
+    previewStock: 0,
+    previewVariants: [],
 
     pickImage(event) {
         const [file] = event.target.files || []
@@ -89,22 +96,36 @@ window.productForm = (initialPreview) => ({
 
         this.priceLabel()
     },
+
+    openPreview() {
+        this.previewName = this.$refs.name?.value || ''
+        this.previewDescription = this.$refs.description?.value || ''
+        this.previewCategory = this.$refs.category?.selectedOptions?.[0]?.text || ''
+        this.previewPrice = this.priceLabel()
+        this.previewStock = Number.parseInt(this.$refs.stock?.value || '0', 10) || 0
+        this.previewVariants = (this.$refs.variants?.value || '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                const [name, price] = line.split('|').map((part) => part.trim())
+                const amount = Number.parseInt(price || '', 10)
+
+                return {
+                    name,
+                    price: Number.isFinite(amount) && amount > 0 ? '₱' + amount.toLocaleString('en-US') : '',
+                }
+            })
+        this.showPreviewFlag = true
+    },
 })
 
-/* --------------------------------------------------- confirm-before-submit */
 
-document.addEventListener('submit', (event) => {
-    const message = event.target.getAttribute('data-confirm')
-
-    if (message && !window.confirm(message)) {
-        event.preventDefault()
-    }
-})
 
 /* ------------------------------------------------------------------ charts */
 
-const gridColor = 'rgba(255, 255, 255, 0.06)'
-const tickColor = '#8b93a7'
+const gridColor = 'rgba(21, 21, 21, 0.06)'
+const tickColor = '#666666'
 
 function baseOptions() {
     return {
@@ -114,11 +135,11 @@ function baseOptions() {
         plugins: {
             legend: { display: false },
             tooltip: {
-                backgroundColor: '#191d24',
-                borderColor: '#2f3540',
+                backgroundColor: '#151515',
+                borderColor: 'rgba(21, 21, 21, 0.2)',
                 borderWidth: 1,
-                titleColor: '#e8eaed',
-                bodyColor: '#9aa3b2',
+                titleColor: '#ffffff',
+                bodyColor: '#c9c9cf',
                 padding: 10,
                 cornerRadius: 10,
                 displayColors: false,
@@ -139,10 +160,10 @@ function renderDistribution(data) {
                 {
                     data: data.counts,
                     backgroundColor: data.colors,
-                    borderColor: '#14171d',
+                    borderColor: '#ffffff',
                     borderWidth: 3,
                     hoverOffset: 8,
-                    hoverBorderColor: '#14171d',
+                    hoverBorderColor: '#ffffff',
                 },
             ],
         },
@@ -174,8 +195,8 @@ function renderPrices(data) {
                 {
                     label: 'Lowest',
                     data: data.min,
-                    backgroundColor: 'rgba(249, 115, 22, 0.55)',
-                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(201, 0, 22, 0.6)',
+                    borderColor: '#c90016',
                     borderWidth: 1.5,
                     borderRadius: 6,
                     borderSkipped: false,
@@ -184,8 +205,8 @@ function renderPrices(data) {
                 {
                     label: 'Highest',
                     data: data.max,
-                    backgroundColor: 'rgba(251, 146, 60, 0.22)',
-                    borderColor: 'rgba(251, 146, 60, 0.7)',
+                    backgroundColor: 'rgba(201, 0, 22, 0.14)',
+                    borderColor: 'rgba(201, 0, 22, 0.45)',
                     borderWidth: 1.5,
                     borderRadius: 6,
                     borderSkipped: false,
@@ -257,6 +278,54 @@ function renderCharts() {
 }
 
 /* ------------------------------------------------------------------- boot */
+
+/* ------------------------------------------------- public storefront favs */
+
+// Session-local favorites used by the public storefront. Nothing is sent to
+// the server: the list is persisted in localStorage so a visitor can mark
+// products they like across page loads.
+Alpine.store('storefront', {
+    favorites: [],
+
+    init() {
+        try {
+            const raw = localStorage.getItem('techverse:favorites')
+            this.favorites = raw ? JSON.parse(raw) : []
+        } catch {
+            this.favorites = []
+        }
+    },
+
+    get count() {
+        return Array.isArray(this.favorites) ? this.favorites.length : 0
+    },
+
+    get favoritesList() {
+        return Array.isArray(this.favorites) ? this.favorites : []
+    },
+
+    has(id) {
+        return Array.isArray(this.favorites) && this.favorites.some((f) => Number(f.id) === Number(id))
+    },
+
+    toggle(product) {
+        const index = this.favorites.findIndex((f) => Number(f.id) === Number(product.id))
+        if (index < 0) {
+            this.favorites.push(product)
+        } else {
+            this.favorites.splice(index, 1)
+        }
+        this.persist()
+    },
+
+    persist() {
+        try {
+            localStorage.setItem('techverse:favorites', JSON.stringify(this.favorites))
+        } catch {
+            /* storage unavailable — favorites stay in memory for the session */
+        }
+    },
+})
 
 window.Alpine = Alpine
 Alpine.start()

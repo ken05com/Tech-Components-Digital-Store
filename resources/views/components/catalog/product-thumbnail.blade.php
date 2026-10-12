@@ -10,7 +10,7 @@
     };
 @endphp
 
-<span class="group/thumb relative grid shrink-0 place-items-center overflow-hidden rounded-xl border border-line bg-shell/80 {{ $box }}">
+<span class="group/thumb relative grid shrink-0 place-items-center overflow-hidden rounded-xl border border-line bg-surface-strong {{ $box }}">
     <img
         src="{{ $product->imageUrl() }}"
         alt="{{ $product->name }}"

@@ -7,7 +7,7 @@
     <button
         type="button"
         @click="open = true"
-        class="inline-flex h-9 items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/[0.07] px-3.5 text-[12.5px] font-semibold text-rose-300 transition hover:border-rose-500/45 hover:bg-rose-500/[0.12]"
+        class="inline-flex h-9 items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/[0.07] px-3.5 text-[12.5px] font-semibold text-rose-600 transition hover:border-rose-500/45 hover:bg-rose-500/[0.12]"
     >
         <x-app.icon name="trash" />
         Delete
@@ -45,21 +45,21 @@
             class="relative w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl"
         >
             <div class="flex gap-3.5 p-5">
-                <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-500/12 text-rose-400 ring-1 ring-rose-500/25">
+                <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-500/12 text-rose-600 ring-1 ring-rose-500/25">
                     <x-app.icon name="trash" />
                 </span>
                 <div>
-                    <h3 id="delete-title-{{ $product->id }}" class="text-[15px] font-semibold text-white">Delete this product?</h3>
-                    <p class="mt-1.5 text-[12.5px] leading-relaxed text-slate-400">
-                        <span class="font-semibold text-slate-200">{{ $product->name }}</span> will be removed from
-                        <span class="text-slate-300">{{ $product->category->label() }}</span>. This only affects your local catalog copy &mdash; use
+                    <h3 id="delete-title-{{ $product->id }}" class="text-[15px] font-semibold text-ink">Delete this product?</h3>
+                    <p class="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                        <span class="font-semibold text-ink">{{ $product->name }}</span> will be removed from
+                        <span class="text-ink">{{ $product->category->label() }}</span>. This only affects your local catalog copy &mdash; use
                         <em>Restore document data</em> in Settings to bring the original 25 products back.
                     </p>
                 </div>
             </div>
 
-            <div class="flex items-center justify-end gap-2 border-t border-line bg-shell/40 px-5 py-3.5">
-                <button type="button" @click="open = false" class="h-9 rounded-xl px-3.5 text-[12.5px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-slate-200">
+            <div class="flex items-center justify-end gap-2 border-t border-line bg-line/30 px-5 py-3.5">
+                <button type="button" @click="open = false" class="h-9 rounded-xl px-3.5 text-[12.5px] font-semibold text-muted transition hover:bg-line/40 hover:text-ink">
                     Cancel
                 </button>
                 <form method="POST" action="{{ route('products.destroy', $product->id) }}">

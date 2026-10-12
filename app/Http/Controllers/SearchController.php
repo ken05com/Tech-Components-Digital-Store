@@ -6,6 +6,7 @@ use App\Catalog\ProductRepository;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class SearchController extends Controller
 {
@@ -34,6 +35,8 @@ class SearchController extends Controller
             'categories' => $this->products->categories(),
             'totalProducts' => $this->products->count(),
             'matchCount' => $results->count(),
+            'canManage' => Gate::allows('manage-products'),
+            'canDelete' => Gate::allows('delete-products'),
             'pageTitle' => 'Search',
         ]);
     }

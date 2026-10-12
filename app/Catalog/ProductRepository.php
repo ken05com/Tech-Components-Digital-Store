@@ -18,21 +18,23 @@ use Illuminate\Support\Str;
  */
 class ProductRepository
 {
-    public const PER_PAGE = 10;
+    public const PER_PAGE = 12;
+
+    public const LOW_STOCK_THRESHOLD = 5;
+
+    public function __construct(private readonly CategoryRepository $categories) {}
 
     /**
-     * All products, ordered by category then ID.
+     * All products, ordered by category position then ID.
      *
      * @return Collection<int, Product>
      */
     public function all(): Collection
     {
-        $merged = $this->merge();
-
-        return collect($merged)
+        return collect($this->merge())
             ->sortBy(fn (Product $product) => sprintf(
-                '%02d-%03d',
-                (int) array_search($product->category, Category::cases(), true),
+                '%03d-%03d',
+                (int) $product->category->position,
                 $product->categoryId
             ))
             ->values();
@@ -53,21 +55,25 @@ class ProductRepository
         return $this->all()->count();
     }
 
-    public function countByCategory(Category $category): int
+    public function countByCategory(CategoryRecord|string $category): int
     {
-        return $this->all()->where('category', $category)->count();
+        $name = $category instanceof CategoryRecord ? $category->value : $category;
+
+        return $this->all()->filter(fn (Product $product) => $product->category->value === $name)->count();
     }
 
-    /** @return Collection<int, Category> */
+    /** @return Collection<int, CategoryRecord> */
     public function categories(): Collection
     {
-        return collect(Category::ordered());
+        return $this->categories->all();
     }
 
     /** @return Collection<int, Product> */
-    public function forCategory(Category $category): Collection
+    public function forCategory(CategoryRecord|string $category): Collection
     {
-        return $this->all()->where('category', $category)->values();
+        $name = $category instanceof CategoryRecord ? $category->value : $category;
+
+        return $this->all()->filter(fn (Product $product) => $product->category->value === $name)->values();
     }
 
     /**
@@ -94,10 +100,9 @@ class ProductRepository
         }
 
         if (is_string($category) && $category !== '' && $category !== 'all') {
-            $target = Category::tryFrom($category);
-            $results = $target
-                ? $results->where('category', $target)
-                : $results->where('category.name', $category);
+            $target = $this->categories->findBySlug($category) ?? $this->categories->findByName($category);
+            $name = $target?->value ?? $category;
+            $results = $results->filter(fn (Product $product) => $product->category->value === $name);
         }
 
         return match ($sort) {
@@ -185,6 +190,86 @@ class ProductRepository
             ->values();
     }
 
+    // ------------------------------------------------------------ inventory --
+
+    /** @return Collection<int, Product> */
+    public function lowStock(int $threshold = self::LOW_STOCK_THRESHOLD, int $limit = 6): Collection
+    {
+        return $this->all()
+            ->filter(fn (Product $p) => $p->stock <= $threshold)
+            ->sortBy(fn (Product $p) => $p->stock)
+            ->take($limit)
+            ->values();
+    }
+
+    public function lowStockCount(int $threshold = self::LOW_STOCK_THRESHOLD): int
+    {
+        return $this->all()->filter(fn (Product $p) => $p->stock <= $threshold)->count();
+    }
+
+    public function outOfStockCount(): int
+    {
+        return $this->all()->where('stock', 0)->count();
+    }
+
+    public function totalStock(): int
+    {
+        return (int) $this->all()->sum(fn (Product $p) => $p->stock);
+    }
+
+    public function stockValue(): float
+    {
+        return (float) $this->all()->sum(fn (Product $p) => $p->stock * $p->averagePrice());
+    }
+
+    /**
+     * Apply a stock movement and record it in the ledger.
+     *
+     * @param  int  $delta  Signed change (+receive / -sale).
+     */
+    public function adjustStock(Product $product, int $delta, string $type, ?string $reason = null, ?int $userId = null): Product
+    {
+        $balance = max(0, $product->stock + $delta);
+
+        DB::table('products')->where('id', $product->id)->update([
+            'stock' => $balance,
+        ]);
+
+        DB::table('inventory_movements')->insert([
+            'product_id' => $product->id,
+            'type' => $type,
+            'quantity' => $type === 'out' ? -abs($delta) : abs($delta),
+            'balance' => $balance,
+            'reason' => $reason,
+            'user_id' => $userId,
+            'created_at' => now()->format('Y-m-d H:i:s'),
+            'updated_at' => now()->format('Y-m-d H:i:s'),
+        ]);
+
+        return $this->find($product->id) ?? $product;
+    }
+
+    /** @return Collection<int, InventoryMovement> */
+    public function movements(int $productId, int $limit = 20): Collection
+    {
+        return DB::table('inventory_movements')
+            ->where('product_id', $productId)
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($row) => new InventoryMovement(
+                id: (int) $row->id,
+                productId: (int) $row->product_id,
+                type: (string) $row->type,
+                quantity: (int) $row->quantity,
+                balance: (int) $row->balance,
+                reason: $row->reason,
+                userId: $row->user_id !== null ? (int) $row->user_id : null,
+                createdAt: $row->created_at,
+            ))
+            ->values();
+    }
+
     // ---------------------------------------------------------------- CRUD --
 
     /**
@@ -192,11 +277,17 @@ class ProductRepository
      */
     public function create(array $data): Product
     {
-        $products = $this->all();
-        $category = Category::from((string) $data['category']);
+        $category = $this->resolveCategory((string) $data['category']);
 
-        $nextId = ($products->max('id') ?? 0) + 1;
-        $nextCategoryId = ($products->where('category', $category)->max('categoryId') ?? 0) + 1;
+        // Include soft-deleted rows when picking the next keys so an id or
+        // per-category row number is never reused. The columns are VARCHAR, so
+        // the max must be computed numerically rather than lexically.
+        $nextId = ((int) DB::table('products')->selectRaw('MAX(CAST(id AS UNSIGNED)) as max_id')->value('max_id')) + 1;
+        $nextCategoryId = ((int) DB::table('products')
+            ->selectRaw('MAX(CAST(category_id AS UNSIGNED)) as max_cat')
+            ->where('category', $category->value)
+            ->value('max_cat')) + 1;
+        $nextCategoryId = max(1, $nextCategoryId);
         $now = now()->format('Y-m-d H:i:s');
 
         $product = new Product(
@@ -208,6 +299,8 @@ class ProductRepository
             priceMin: (int) $data['price_min'],
             priceMax: (int) $data['price_max'],
             image: $data['image'] ?? null,
+            stock: (int) ($data['stock'] ?? 0),
+            variants: (array) ($data['variants'] ?? []),
             createdAt: $now,
             updatedAt: $now,
         );
@@ -221,6 +314,9 @@ class ProductRepository
             'price_min' => $product->priceMin,
             'price_max' => $product->priceMax,
             'image' => $product->image,
+            'stock' => $product->stock,
+            'variants' => $product->variants === [] ? null : json_encode($product->variants),
+            'deleted_at' => null,
         ]);
 
         return $product;
@@ -231,7 +327,7 @@ class ProductRepository
      */
     public function update(Product $product, array $data): Product
     {
-        $category = Category::from((string) $data['category']);
+        $category = $this->resolveCategory((string) $data['category']);
 
         $updated = new Product(
             id: $product->id,
@@ -242,6 +338,8 @@ class ProductRepository
             priceMin: (int) $data['price_min'],
             priceMax: (int) $data['price_max'],
             image: ($data['image'] ?? null) ?: $product->image,
+            stock: array_key_exists('stock', $data) ? (int) $data['stock'] : $product->stock,
+            variants: array_key_exists('variants', $data) ? (array) $data['variants'] : $product->variants,
             createdAt: $product->createdAt,
             updatedAt: now()->format('Y-m-d H:i:s'),
         );
@@ -254,14 +352,104 @@ class ProductRepository
             'price_min' => $updated->priceMin,
             'price_max' => $updated->priceMax,
             'image' => $updated->image,
+            'stock' => $updated->stock,
+            'variants' => $updated->variants === [] ? null : json_encode($updated->variants),
         ]);
 
         return $updated;
     }
 
+    /** Soft-deletes a product: the row and its image are kept for restoration. */
     public function delete(Product $product): void
     {
+        DB::table('products')->where('id', $product->id)->update([
+            'deleted_at' => now()->format('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /**
+     * Restores a soft-deleted product, optionally applying edits made in the
+     * restore form. Clears deleted_at so it returns to the active catalog.
+     *
+     * @param  array<string, mixed>|null  $data
+     */
+    public function restore(Product $product, ?array $data = null): Product
+    {
+        if ($data !== null) {
+            // update() writes the edited columns; deleted_at is handled below.
+            $this->update($product, $data);
+        }
+
+        DB::table('products')->where('id', $product->id)->update(['deleted_at' => null]);
+
+        return $this->find($product->id) ?? $product;
+    }
+
+    /** Permanently removes a product row. Callers must clean up its image. */
+    public function forceDelete(Product $product): void
+    {
         DB::table('products')->where('id', $product->id)->delete();
+    }
+
+    /** Products currently in the Deleted Items bin, newest first. */
+    /** @return Collection<int, Product> */
+    public function onlyTrashed(): Collection
+    {
+        return collect($this->merge(true))
+            ->filter(fn (Product $product) => $product->isDeleted())
+            ->sortByDesc(fn (Product $product) => $product->deletedAt)
+            ->values();
+    }
+
+    public function findTrashed(int $id): ?Product
+    {
+        return $this->onlyTrashed()->firstWhere('id', $id);
+    }
+
+    public function countTrashed(): int
+    {
+        return DB::table('products')->whereNotNull('deleted_at')->count();
+    }
+
+    /**
+     * Search within the deleted bin.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, Product>
+     */
+    public function trashedQuery(array $filters = []): Collection
+    {
+        $search = trim((string) ($filters['search'] ?? ''));
+        $results = $this->onlyTrashed();
+
+        if ($search !== '') {
+            $needle = Str::lower($search);
+            $results = $results->filter(fn (Product $product) => Str::contains(Str::lower($product->name), $needle)
+                || Str::contains(Str::lower($product->description), $needle)
+                || Str::contains(Str::lower($product->category->value), $needle));
+        }
+
+        return $results->values();
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function paginateTrashed(array $filters = [], int $perPage = self::PER_PAGE): LengthAwarePaginator
+    {
+        $items = $this->trashedQuery($filters);
+        $page = max(1, (int) ($filters['page'] ?? request()->query('page', 1)));
+
+        return new LengthAwarePaginator(
+            $items->forPage($page, $perPage)->values(),
+            $items->count(),
+            $perPage,
+            $page,
+            [
+                'path' => 'deleted-items',
+                'query' => array_filter(['search' => $filters['search'] ?? null], fn ($v) => $v !== null && $v !== ''),
+            ]
+        );
     }
 
     /** Wipes the table and re-seeds the 25 rows from CatalogData. */
@@ -278,12 +466,26 @@ class ProductRepository
 
     // ------------------------------------------------------------ internals --
 
-    /** @return array<int, Product> */
-    private function merge(): array
+    private function resolveCategory(string $name): CategoryRecord
     {
-        return DB::table('products')
-            ->get()
-            ->map(fn ($row) => Product::fromArray((array) $row))
+        return $this->categories->findByName($name)
+            ?? $this->categories->findFirst()
+            ?? CategoryRecord::fromName($name);
+    }
+
+    /** @return array<int, Product> */
+    private function merge(bool $withTrashed = false): array
+    {
+        $query = DB::table('products');
+
+        if (! $withTrashed) {
+            $query->whereNull('deleted_at');
+        }
+
+        $map = $this->categories->all()->keyBy(fn (CategoryRecord $c) => $c->value)->all();
+
+        return $query->get()
+            ->map(fn ($row) => Product::fromArray((array) $row, $map))
             ->all();
     }
 
